@@ -14,7 +14,7 @@ struct User{
 struct Appointment {
     char appointmentType[14];
     char caller[20];
-    char *callees[10];      // split string into buffer and save them in this
+    char callees[10];      // split string into buffer and save them in this
     int date;
     int time;
     float duration;
@@ -27,11 +27,11 @@ int main(int argc, char *argv[]){
     int startDate, endDate;
     char command[14];
     int n;
-    int userCounter, i;
+    int userCounter, i, j, ctr;
     int fd1[2]; // First pepe to send input string from parent
     int fd2[2]; // Second pepe to send informations form child
     char buffer[200];
-    char *pch;
+    char splitString[15][20];
 
     // Define variables
     userCounter = argc - 3;
@@ -82,17 +82,19 @@ int main(int argc, char *argv[]){
         // Get user input
         while(1){
             // Input methods
+            j=0; ctr=0;
             printf("Please enter appointment:\n");
-            scanf("%s %s %d %d %f%200[^\n]", command, childAppointment.caller, &childAppointment.date, &childAppointment.time, &childAppointment.duration, buffer);
-            strcpy(childAppointment.appointmentType, command);
-            // save split buffer into childAppointment callees
-            pch = strtok(buffer, " ");
-            i = 0;
-            while(pch != NULL){
-                childAppointment.callees[i++] = pch;
-                pch = strtok(NULL, " ");
+            fgets(buffer, sizeof(buffer), stdin);
+            for(i=0;i<=(strlen(buffer));i++){
+                if(buffer[i] == ' ' || buffer[i] == '\0'){
+                    splitString[ctr++][j]='\0';
+                    j=0;
+                }
+                else{
+                    splitString[ctr][j++] = buffer[i];
+                }
             }
-            printf("test");
+            strcpy(command, splitString[0]);
             /* Debug session
             for(i=0;i<sizeof(callees);i++){
                 if(callees[i] == NULL){
@@ -113,8 +115,7 @@ int main(int argc, char *argv[]){
                 close(fd1[1]);
             }
             else if(strcmp(command, "projectMeeting") == 0){
-                // Pipe it to child process
-                
+                // Pipe it to child process                
             }
             else if(strcmp(command, "groupStudy") == 0){
                 // Pipe it to child process
@@ -135,7 +136,6 @@ int main(int argc, char *argv[]){
         // Pipe infomations from parent to child
         close(fd1[1]);
         int n;
-        printf("User: %s",user[0].name);
         // keep get the value from parent
         /*while(n = read(fd1[0],&childAppointment,sizeof(childAppointment)) > 0){
             for(int i=0;i<userCounter;i++){
@@ -145,11 +145,11 @@ int main(int argc, char *argv[]){
             }*/
             
         // Test is it the data transfer correctly
-        struct Appointment childAppointment;
-        while(n = read(fd1[0],&childAppointment,sizeof(childAppointment)) > 0){
+        struct Appointment appointment;
+        while(n = read(fd1[0],&appointment,sizeof(childAppointment)) > 0){
             for(i=0;i<userCounter;i++){
-                if(strcmp(childAppointment.caller, user[i].name) == 0){
-                    printf("meetingType: %s\ncaller: %s\ndate: %d\ntime: %d\nduration: %f\n",childAppointment.appointmentType,childAppointment.caller,childAppointment.date,childAppointment.time,childAppointment.duration);
+                if(strcmp(appointment.caller, user[i].name)){
+                    printf("meetingType: %s\ncaller: %s\ndate: %d\ntime: %d\nduration: %f\n",appointment.appointmentType,appointment.caller,appointment.date,appointment.time,appointment.duration);
                     break;
                 }    
             }
