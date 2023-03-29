@@ -6,7 +6,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define MAX_USER_NAME_CHAR 20
+#define MAX_USER_NAME_CHAR 30
 
 bool haveTimeConflict(int startTimeA, float durationA, int startTimeB, float durationB){
     int durationHourA = (int) durationA;
