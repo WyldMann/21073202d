@@ -154,8 +154,35 @@ int main(int argc, char *argv[]){
             exit(0);
         }
 
-        // Display welcome message
+        // Display welcome message and inquires input method
         printf("~~WELCOME TO APO~~\n");
+        printf("Please enter input method (0 = Manual Commands, 1 = BAT File): ");
+        char inputmethod = 'x';
+        scanf("%c", &inputmethod);
+
+        while (inputmethod != '0' && inputmethod != '1') {
+            printf("Input invalid\nPlease reenter input method (0 = Manual Commands, 1 = BAT File): ");
+            scanf("%c", &inputmethod);
+        }
+
+        // file opening for BAT method
+        FILE *fptr;
+        if (inputmethod == '1') {
+            printf("Enter file name: ");
+            char fname[20];
+            scanf("%s",fname);
+
+            while ((fptr = fopen(fname,"r")) == NULL) {
+                printf("File not found \n");    
+                printf("Re-enter file name: ");
+                char *fname;
+                scanf("%s",fname);
+            }
+        }
+
+        // file opening to write log files
+        FILE *log;
+        if ((log = fopen("log.txt","w")) == NULL) printf("Error initiating log file");
 
         // Get user input
         while(1){
@@ -164,8 +191,20 @@ int main(int argc, char *argv[]){
             struct Appointment appointmentCheckList[10];
             bool isReject;
             j=0; ctr=0;
-            printf("Please enter appointment:\n");
-            fgets(buffer, sizeof(buffer), stdin);
+            
+            // fetching the input, either from file or stdin
+            if (inputmethod == '1') {
+                fgets(buffer,sizeof(buffer),fptr);
+            }
+            else {
+                printf("Please enter appointment:\n");
+                fgets(buffer, sizeof(buffer), stdin);
+            }
+            
+            // record input into log.txt
+            fputs(buffer,log);
+            putc('\n',log);
+            
             for(i=0;i<=(strlen(buffer));i++){
                 if(buffer[i] == ' ' || buffer[i] == '\0'){
                     splitString[ctr++][j]='\0';
@@ -246,6 +285,11 @@ int main(int argc, char *argv[]){
                 }
             }
         }
+        
+        // close files
+        if (inputmethod=='1') fclose(fptr);
+        fclose(log);
+        
 
     }
     else {
