@@ -203,7 +203,6 @@ int main(int argc, char *argv[]){
             
             // record input into log.txt
             fputs(buffer,log);
-            putc('\n',log);
             
             for(i=0;i<=(strlen(buffer));i++){
                 if(buffer[i] == ' ' || buffer[i] == '\0'){
