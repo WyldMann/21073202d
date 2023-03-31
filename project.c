@@ -5,19 +5,9 @@
 #include <ctype.h> 
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <stdbool.h>
 
-#define MAX_USER_NAME_CHAR 30
-
-bool haveTimeConflict(int startTimeA, float durationA, int startTimeB, float durationB){
-    int durationHourA = (int) durationA;
-    int durationHourB = (int) durationB;
-    float durationMinA = 60 * (durationA - durationHourA);
-    float durationMinB = 60 * (durationB - durationHourB);
-    int endTimeA = durationHourA * 100 + durationMinA;
-    int endTimeB = durationHourB * 100 + durationB;
-
-}
-
+#define MAX_USER_NAME_CHAR 20
 
 struct User {
     int pid;
@@ -25,23 +15,84 @@ struct User {
 };
 
 
-/*
-struct Communication {
-    enum type {APPOINTMENT, PRINT, GET, DOTHIS } typeOfThisComm;
-    Appointment* appointment;
-}
-*/
-
 struct Appointment {
-    enum Type {APPOINTMENT, PRINT} type;
-    bool fail;
+    enum Type {APPOINTMENT, CHECK, REJECTED, PRINT} type;   // type PRINT is used for communication (not an appointment)
+    bool isFail;
     char appointmentType[14];
     char caller[MAX_USER_NAME_CHAR];
     char callees[9][MAX_USER_NAME_CHAR];
     int date;
     int time;
     float duration;
+    int numberOfCallees;
 };
+
+bool haveTimeConflict(int dateA, int dateB ,int startTimeA, float durationA, int startTimeB, float durationB){
+    int durationHourA = (int) durationA;
+    int durationHourB = (int) durationB;
+    float durationMinA = 60 * (durationA - durationHourA);
+    float durationMinB = 60 * (durationB - durationHourB);
+    int endTimeA = durationHourA * 100 + durationMinA;
+    int endTimeB = durationHourB * 100 + durationB;
+    if(dateA != dateB){
+        return false;
+    }
+    else if((endTimeA >= startTimeB && endTimeA <= endTimeB) || (startTimeA >= startTimeB && startTimeA <= endTimeB )){
+        return true;
+    }
+    else{
+        return false;
+    }
+}
+
+struct Appointment createAppointment(char userInput[15][20], int userCounter){
+    struct Appointment newAppoinment;
+    int i;
+    int numberOfCallees = 0;
+    strcpy(newAppoinment.appointmentType, userInput[0]);
+    strcpy(newAppoinment.caller, userInput[1]);
+    newAppoinment.date = atoi(userInput[2]);
+    newAppoinment.time = atoi(userInput[3]);
+    newAppoinment.duration = atof(userInput[4]);
+    newAppoinment.type = CHECK;
+    numberOfCallees = arrLength(userInput) - 5;
+    if(numberOfCallees != 0){
+        for(i=0;i<numberOfCallees;i++){
+            strcpy(newAppoinment.callees[i], userInput[i+5]);
+        }
+    }
+    newAppoinment.numberOfCallees = numberOfCallees;
+    return newAppoinment;
+}
+
+int searchUser(char* userName, int userCounter, struct User user[]) {
+    int i;
+    for(i=0;i<userCounter;i++){
+        if(user[i].name == userName){
+            return i;
+        }
+    }
+    return 0;
+}
+
+int arrLength(char arr[][MAX_USER_NAME_CHAR]){
+    int i;
+    int count = 0;
+    for(i=0;arr[i][0]!='\0';i++){
+        count++;
+    }
+    return count;
+}
+
+void printAppointment(int printCount,char scheduling[],int startDate,int endDate, struct Appointment appointment){
+    FILE *fp;
+    fp = fopen(("Ggg_%d_%s.txt",printCount,scheduling),"w");
+    fprintf(fp, "Period: %d to %d\n",startDate,endDate);
+    fprintf(fp, "Algorithm used: %s\n",scheduling);
+    fprintf(fp, "***Appointment Schedule***\n\n");
+    fprintf(fp, "")
+
+}
 
 int main(int argc, char *argv[]){
     // ====================================================
@@ -49,34 +100,34 @@ int main(int argc, char *argv[]){
     // ====================================================
     // Initialize variables
     struct User user[10]; 
-    struct Appointment childAppointment[100];
+    struct Appointment childAppointment[10][100];
     int startDate, endDate;
     char command[14];
     int n;
     int userCounter, i, j, ctr;
-    int fd1[2]; // First pepe to send input string from parent
-    int fd2[2]; // Second pepe to send informations form child
+    int userLocation;
+    int fd1[10][2]; // parent to child (with channels)
+    int fd2[2]; // child to parent
     char buffer[200];
     char splitString[15][MAX_USER_NAME_CHAR];
     userCounter = argc - 3;
     startDate = atoi(argv[1]);
     endDate = atoi(argv[2]);
+    char scheduling[8];
+    int printCount;
 
     // ====================================================
     // # Children's variables
     // ====================================================
-    char userName[50];
+    char userName[MAX_USER_NAME_CHAR];
 
     // ====================================================
 
     // Create pipe
-    if(pipe(fd1) == -1){
-        printf("Pipe Failed\n");
-        exit(0);
-    }
-    if(pipe(fd2) == -1){
-        printf("Pipe Failed\n");
-        exit(0);
+    for(i=0;i<userCounter;i++){
+        if(pipe(fd1[i]) == -1){
+            printf("pipe failed\n");
+        }
     }
 
     // Fork child for handling serval users
@@ -87,11 +138,10 @@ int main(int argc, char *argv[]){
         user[i].name[0] = toupper(user[i].name[0]);
         n = fork();    
         if (n == 0) {
-            // user[i].pid = getpid();
             break;
         }
         else {
-            user[i].pid = n;
+            user[i].pid = i;
         }
     }
 
@@ -110,6 +160,9 @@ int main(int argc, char *argv[]){
         // Get user input
         while(1){
             // Input methods
+            struct Appointment appointment;
+            struct Appointment appointmentCheckList[10];
+            bool isReject;
             j=0; ctr=0;
             printf("Please enter appointment:\n");
             fgets(buffer, sizeof(buffer), stdin);
@@ -125,109 +178,141 @@ int main(int argc, char *argv[]){
             strcpy(command, splitString[0]);
             
             if(strcmp(command, "endProgram") == 0){
+                // command endProgram 
                 printf("-> Bye!\n");
                 wait(NULL);
                 break;
             }
-            else if(strcmp(command, "privateTime") == 0){
-                // Pipe it to child process
-                strcpy(childAppointment.appointmentType, command);
-                strcpy(childAppointment.caller, splitString[1]);
-                childAppointment.date = atoi(splitString[2]);
-                childAppointment.time = atoi(splitString[3]);
-                childAppointment.duration = atof(splitString[4]);
+            else if(strcmp(command, "printSchd") == 0){
+                // command printSchd
+                strcpy(scheduling,splitString[1]);
+                appointment.appointmentType = PRINT;
                 for(i=0;i<userCounter;i++){
-                    strcpy(childAppointment.callees[i], splitString[i+5]);
+                    // send to all user
+                    write(fd1[i][1],&appointment,sizeof(struct Appointment));
                 }
-                childAppointment->appointmentType = APPOINTMENT;
-                write(fd1[1], &childAppointment, sizeof(struct Appointment));
-                close(fd1[1]);
+                for(i=0;i<userCounter;i++){
+                    // read all user appointment
+                    read(fd2[0],&childAppointment,sizeof(struct Appointment));
+                }
+                
+                printAppointment();
+                printCount++;
+            }
+            else if(strcmp(command, "privateTime") != 0){
+                // command except privateTime
+                // Pipe it to child process
+                appointment = createAppointment(splitString, userCounter);
+                for(i=0;i<appointment.numberOfCallees;i++){
+                    userLocation = searchUser(appointment.callees[i],userCounter,user);
+                    write(fd1[userLocation][1], &appointment, sizeof(struct Appointment));
+                }
+                userLocation = searchUser(appointment.caller,userCounter,user);
+                write(fd1[userLocation][1], &appointment, sizeof(struct Appointment));
                 printf("-> [Recorded]\n");
                 
             }
-            else if(strcmp(command, "projectMeeting") == 0){
+            else if(strcmp(command, "privateTime") == 0){
+                // command privateTime
                 // Pipe it to child process
-                strcpy(childAppointment.appointmentType, command);
-                strcpy(childAppointment.caller, splitString[1]);
-                childAppointment.date = atoi(splitString[2]);
-                childAppointment.time = atoi(splitString[3]);
-                childAppointment.duration = atof(splitString[4]);
-                for(i=0;i<userCounter;i++){
-                    strcpy(childAppointment.callees[i], splitString[i+5]);
-                }
-                childAppointment->appointmentType = APPOINTMENT;
-                write(fd1[1], &childAppointment, sizeof(struct Appointment));
-                close(fd1[1]);
+                appointment = createAppointment(splitString, userCounter);
+                userLocation = searchUser(appointment.caller,userCounter,user);
+                write(fd1[userLocation][1], &appointment, sizeof(struct Appointment));
                 printf("-> [Recorded]\n");
-            }
-            else if(strcmp(command, "groupStudy") == 0){
-                // Pipe it to child process
-                strcpy(childAppointment.appointmentType, command);
-                strcpy(childAppointment.caller, splitString[1]);
-                childAppointment.date = atoi(splitString[2]);
-                childAppointment.time = atoi(splitString[3]);
-                childAppointment.duration = atof(splitString[4]);
-                for(i=0;i<userCounter;i++){
-                    strcpy(childAppointment.callees[i], splitString[i+5]);
-                }
-                childAppointment->appointmentType = APPOINTMENT;
-                write(fd1[1], &childAppointment, sizeof(struct Appointment));
-                close(fd1[1]);
-                printf("-> [Recorded]\n");
-            }
-            else if(strcmp(command, "gathering") == 0){
-                // Pipe it to child process
-                strcpy(childAppointment.appointmentType, command);
-                strcpy(childAppointment.caller, splitString[1]);
-                childAppointment.date = atoi(splitString[2]);
-                childAppointment.time = atoi(splitString[3]);
-                childAppointment.duration = atof(splitString[4]);
-                for(i=0;i<userCounter;i++){
-                    strcpy(childAppointment.callees[i], splitString[i+5]);
-                }
-                childAppointment->appointmentType = APPOINTMENT;
-                write(fd1[1], &childAppointment, sizeof(struct Appointment));
-                close(fd1[1]);
-                printf("-> [Recorded]\n");
-            }
-            else if(strcmp(command, "printSchd") == 0){
-                // Pipe from child process
-                printf("Pipe from child\n");
             }
 
+            // check all user appointment wheater it isFail is true
+            close(fd2[1]);
+            isReject = false;
+            for(i=0;i<appointment.numberOfCallees+1;i++){
+                read(fd2[0], &appointment, sizeof(struct Appointment));
+                appointmentCheckList[i] = appointment;
+                if(appointmentCheckList[i].isFail == true){
+                    // if there is one child can't join the meet
+                    // meeting rejected
+                    isReject = true;
+                }
+            }
+            for(i=0;i<appointment.numberOfCallees+1;i++){
+                if(isReject == true){
+                    appointmentCheckList[i].type = REJECTED;
+                    userLocation = searchUser(appointmentCheckList[0].callees[i],userCounter,user);
+                    write(fd1[userLocation][1],&appointmentCheckList[i],sizeof(struct Appointment));
+                }
+                else{
+                    appointmentCheckList[i].type = APPOINTMENT;
+                    userLocation = searchUser(appointmentCheckList[0].callees[i],userCounter,user);
+                    write(fd1[userLocation][1],&appointmentCheckList[i],sizeof(struct Appointment));
+                }
+            }
         }
 
     }
     else {
         // Child Process
         // Pipe infomations from parent to child
-        close(fd1[1]);
-        int n;
+        int location;
         int calleesCounter;
         int appointmentSize = 0;
-        struct Appointment appointments[100];
+        int appointmentFailedCounter = 0;
+        struct Appointment confirmedAppointments[100];
+        struct Appointment failedAppointments[100];
         // keep get the value from parent
         while(1){
             struct Appointment appointment;
-            read(fd1[0],&appointment,sizeof(appointment));
-            if (appointment.type == APPOINTMENT) { 
-                // record appointment
-                for(i=0;i<appointmentSize;i++){
-                    // check time slot
-                    
-                    if()
+            location = searchUser(userName,userCounter,user);
+            read(fd1[location][0],&appointment,sizeof(struct Appointment));    // read own channel
+            // check for their own availability 
+            if(appointment.type == PRINT) {
+                write(fd2[1], &confirmedAppointments, sizeof(struct Appointment));
+            }
+            if(appointment.type == CHECK){
+                if(appointmentSize == 0){
+                    appointment.isFail = false;
+                    write(fd2[1], &appointment, sizeof(struct Appointment));
                 }
-                memcpy(appointments[appointmentSize], appointment, sizeof(struct Appointment));
-                appointmentSize++;
+                else{
+                    for(i=0;i<appointmentSize;i++){
+                        if(haveTimeConflict(appointment.date,confirmedAppointments[i].date,appointment.time,appointment.duration,confirmedAppointments[i].time,confirmedAppointments[i].duration)){
+                            appointment.isFail = true;
+                            write(fd2[1],&appointment,sizeof(struct Appointment));
+                            break;
+                        }
+                        else{
+                            appointment.isFail = false;
+                        }
+                    }
+                    if(appointment.isFail == false){
+                        write(fd2[1],&appointment,sizeof(struct Appointment));
+                    }
+                }
+                // read again from parent
+                read(fd1[location][0],&appointment,sizeof(struct Appointment));
             }
-            else {
-                // print
-
+            // Add to the appointment
+            if(appointment.numberOfCallees != 0){        // callees are exist(loop is needed)
+                for(i=0;i<appointment.numberOfCallees;i++){
+                    if(appointment.type == REJECTED){
+                        failedAppointments[appointmentFailedCounter] = appointment;
+                        appointmentFailedCounter++;
+                    }
+                    else if(appointment.type == APPOINTMENT){
+                        confirmedAppointments[appointmentSize] = appointment;
+                        appointmentSize++;
+                    }
+                }
             }
-            
-        close(fd1[0]);
-        exit(0);
+            else if(appointment.numberOfCallees == 0) {     // caller only
+                if(appointment.type == REJECTED){
+                    failedAppointments[appointmentFailedCounter] = appointment;
+                    appointmentFailedCounter++;
+                }
+                else if(appointment.type == APPOINTMENT){
+                    confirmedAppointments[appointmentSize] = appointment;
+                    appointmentSize++;
+                }
+            }
         }
     }
-        
 }
+
